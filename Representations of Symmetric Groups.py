@@ -208,5 +208,10 @@ def print_unitary_repr(d, partition):
     for sigma in group_elements:
         print(print_permutation(d, sigma))
         print(unitary_matrices[sigma])
+    print("")
 
+print_unitary_repr(4, [4])
+print_unitary_repr(4, [3, 1])
 print_unitary_repr(4, [2, 2])
+print_unitary_repr(4, [2, 1, 1])
+print_unitary_repr(4, [1, 1, 1, 1])
