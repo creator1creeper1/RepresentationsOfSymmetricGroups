@@ -1,4 +1,5 @@
-import sympy as sp
+import numpy as np
+import scipy as sp
 from frozendict import *
 
 class Dir:
@@ -46,7 +47,7 @@ def factorial(d):
         return d * factorial(d - 1)
 
 def get_group_algebra_matrix(d, f, g, sigma, action_dir):
-    M = sp.zeros(factorial(d), factorial(d))
+    M = np.zeros((factorial(d), factorial(d)))
     for j in range(0, factorial(d)):
         if action_dir == Dir.Left:
             i = g[compose(d, sigma, f[j])]
@@ -139,14 +140,14 @@ def get_column_symmetrizer(d, partition, t, group_elements):
             res.append(sigma)
     return res
 
-def get_repr_matrices(d, group_elements, V_basis, V_basis_matrix, V_dim, left_matrices):
+def get_repr_matrices(d, group_elements, V_basis_matrix, V_dim, left_matrices):
     repr_matrices = dict()
     for sigma in group_elements:
-        M = sp.zeros(V_dim, V_dim)
+        M = np.zeros((V_dim, V_dim))
         for j in range(V_dim):
-            b = left_matrices[sigma] * V_basis[j]
-            system = (V_basis_matrix, b)
-            (x,) = sp.linsolve(system)
+            b = np.matmul(left_matrices[sigma], V_basis_matrix[:, j])
+            A = V_basis_matrix
+            x = np.linalg.lstsq(A, b)[0]
             M[:, j] = x
         repr_matrices[sigma] = M
     return repr_matrices
@@ -156,34 +157,33 @@ def get_some_repr(d, partition):
     left_matrices = get_group_algebra(d, group_elements, f, g, action_dir = Dir.Left)
     right_matrices = get_group_algebra(d, group_elements, f, g, action_dir = Dir.Right)
     t = get_young_tableau(d, partition)
-    a = sp.zeros(factorial(d), factorial(d))
+    a = np.zeros((factorial(d), factorial(d)))
     for sigma in get_row_symmetrizer(d, partition, t, group_elements):
         a += right_matrices[sigma]
-    b = sp.zeros(factorial(d), factorial(d))
+    b = np.zeros((factorial(d), factorial(d)))
     for sigma in get_column_symmetrizer(d, partition, t, group_elements):
         b += sign(d, sigma) * right_matrices[sigma]
-    c = a * b
-    V_basis = c.columnspace()
-    V_basis_matrix = sp.Matrix.hstack(*V_basis)
-    V_dim = len(V_basis)
-    repr_matrices = get_repr_matrices(d, group_elements, V_basis, V_basis_matrix, V_dim, left_matrices)
+    c = np.matmul(a, b)
+    V_basis_matrix = sp.linalg.orth(c)
+    V_dim = np.shape(V_basis_matrix)[1]
+    repr_matrices = get_repr_matrices(d, group_elements, V_basis_matrix, V_dim, left_matrices)
     return (group_elements, V_dim, repr_matrices)
 
 def calculate_invariant_inner_product(d, group_elements, repr_matrices, v, w):
     res = 0
     for sigma in group_elements:
-        gv = repr_matrices[sigma] * v
-        gw = repr_matrices[sigma] * w
+        gv = np.matmul(repr_matrices[sigma], v)
+        gw = np.matmul(repr_matrices[sigma], w)
         res += gv.dot(gw)
     return res
 
 def calculate_invariant_inner_product_matrix(d, group_elements, dim, repr_matrices):
-    M = sp.zeros(dim, dim)
+    M = np.zeros((dim, dim))
     for j in range(dim):
-        ej = sp.zeros(dim, 1)
+        ej = np.zeros((dim,))
         ej[j] = 1
         for i in range(dim):
-            ei = sp.zeros(dim, 1)
+            ei = np.zeros((dim,))
             ei[i] = 1
             M[i, j] = calculate_invariant_inner_product(d, group_elements, repr_matrices, ei, ej)
     return M
@@ -191,21 +191,22 @@ def calculate_invariant_inner_product_matrix(d, group_elements, dim, repr_matric
 def get_unitary_repr(d, partition):
     (group_elements, dim, repr_matrices) = get_some_repr(d, partition)
     inner_product_matrix = calculate_invariant_inner_product_matrix(d, group_elements, dim, repr_matrices)
-    eig = inner_product_matrix.eigenvects()
+    eigenvectors = np.linalg.eig(inner_product_matrix)[1]
     orthonormal_basis = []
-    for (val, mul, vecs) in eig:
-        for vec in vecs:
-            vec_norm = sp.sqrt(calculate_invariant_inner_product(d, group_elements, repr_matrices, vec, vec))
-            orthonormal_basis.append(vec / vec_norm)
-    orthonormal_basis_matrix = sp.Matrix.hstack(*orthonormal_basis)
+    for j in range(dim):
+        vec = eigenvectors[:, j]
+        vec_norm = np.sqrt(calculate_invariant_inner_product(d, group_elements, repr_matrices, vec, vec))
+        orthonormal_basis.append(vec / vec_norm)
+    orthonormal_basis_matrix = np.column_stack(orthonormal_basis)
     unitary_matrices = dict()
     for sigma in group_elements:
-        unitary_matrices[sigma] = orthonormal_basis_matrix**(-1) * repr_matrices[sigma] * orthonormal_basis_matrix
+        unitary_matrices[sigma] = np.matmul(np.matmul(np.linalg.inv(orthonormal_basis_matrix), repr_matrices[sigma]), orthonormal_basis_matrix)
     return (group_elements, unitary_matrices)
 
 def print_unitary_repr(d, partition):
     (group_elements, unitary_matrices) = get_unitary_repr(d, partition)
     for sigma in group_elements:
-        print("{:<20} {}".format(print_permutation(d, sigma), str(unitary_matrices[sigma])))
+        print(print_permutation(d, sigma))
+        print(unitary_matrices[sigma])
 
 print_unitary_repr(4, [2, 2])
